@@ -13,6 +13,12 @@ async function clickAt(Input, x, y) {
   await Input.dispatchMouseEvent({type: 'mouseReleased', x, y, button: 'left', clickCount: 1});
 }
 
+// Di chuột tới toạ độ để trigger hover (không click)
+async function hoverAt(Input, x, y) {
+  await Input.dispatchMouseEvent({type: 'mouseMoved', x, y});
+  await sleep(600); // Chờ CSS hover transition
+}
+
 // Chờ file mới xuất hiện trong thư mục (bỏ qua .crdownload và .tmp)
 async function waitForNewFile(folder, existingFiles, timeoutMs) {
   const start = Date.now();
@@ -39,7 +45,7 @@ const mode = (process.argv[4] || 'image').toLowerCase(); // 'image' hoặc 'vide
   try {
     console.log(`\n=== ⬇️ TẢI KẾT QUẢ (${mode.toUpperCase()}) ===`);
     console.log(`  → Thư mục đích: ${outputFolder}`);
-    console.log(`  → Prefix: ${prefix}`);
+    console.log(`  → Prefix       : ${prefix}`);
 
     if (!fs.existsSync(outputFolder)) {
       fs.mkdirSync(outputFolder, { recursive: true });
@@ -63,9 +69,64 @@ const mode = (process.argv[4] || 'image').toLowerCase(); // 'image' hoặc 'vide
     // Snapshot danh sách file hiện có trước khi download
     const existingFiles = new Set(fs.readdirSync(outputFolder));
 
-    // ─────────────────────────────────────────────────────
-    // CÁCH 1: TÌM VÀ CLICK CÁC NÚT DOWNLOAD TRÊN TRANG
-    // ─────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────
+    // BƯỚC 1: TÌM CÁC RESULT CARD (container chứa ảnh/video kết quả)
+    // và HOVER vào từng card để làm hiện nút download ẩn
+    // ─────────────────────────────────────────────────────────────────
+    console.log(`  → Đang tìm result cards và hover để reveal nút download...`);
+
+    const { result: cardsResult } = await Runtime.evaluate({
+      expression: `
+        (() => {
+          // Tìm các card chứa kết quả: div/section bao quanh img hoặc video lớn
+          const mediaEls = Array.from(document.querySelectorAll('${mode === 'video' ? 'video' : 'img'}'))
+            .filter(el => {
+              const r = el.getBoundingClientRect();
+              return r.width > 100 && r.height > 100;
+            });
+
+          // Với mỗi media, leo lên tìm container card gần nhất
+          const cards = [];
+          const seen = new Set();
+          for (const el of mediaEls) {
+            let node = el;
+            // Leo lên tối đa 6 cấp để tìm card container
+            for (let i = 0; i < 6; i++) {
+              if (!node.parentElement) break;
+              node = node.parentElement;
+              const r = node.getBoundingClientRect();
+              // Card phải có kích thước hợp lý và chứa media bên trong
+              if (r.width > 100 && r.height > 100 && r.width < 1200) {
+                const key = Math.round(r.x) + ',' + Math.round(r.y);
+                if (!seen.has(key)) {
+                  seen.add(key);
+                  cards.push({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+                }
+                break;
+              }
+            }
+          }
+          return JSON.stringify(cards);
+        })()
+      `
+    });
+
+    const cards = JSON.parse(cardsResult.value || '[]');
+    console.log(`  → Tìm thấy ${cards.length} result card(s). Đang hover...`);
+
+    // Hover vào từng card để trigger CSS hover state
+    for (const card of cards) {
+      await hoverAt(Input, card.x, card.y);
+    }
+
+    // Chờ thêm 1 giây sau khi hover để animation/transition hoàn tất
+    await sleep(1000);
+
+    // ─────────────────────────────────────────────────────────────────
+    // BƯỚC 2: TÌM NÚT DOWNLOAD (sau khi đã hover để làm hiện)
+    // ─────────────────────────────────────────────────────────────────
+    console.log(`  → Đang tìm nút download...`);
+
     const { result: btnsResult } = await Runtime.evaluate({
       expression: `
         (() => {
@@ -88,11 +149,11 @@ const mode = (process.argv[4] || 'image').toLowerCase(); // 'image' hoặc 'vide
 
           return JSON.stringify(downloadBtns.map(b => {
             const r = b.getBoundingClientRect();
-            return {
-              x: r.left + r.width / 2,
-              y: r.top + r.height / 2,
-              visible: r.width > 0 && r.height > 0
-            };
+            // Bao gồm cả button ẩn (opacity: 0) nhưng có kích thước (đang hover-triggered)
+            const style = window.getComputedStyle(b);
+            const visible = r.width > 0 && r.height > 0 &&
+              style.display !== 'none' && style.visibility !== 'hidden';
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2, visible };
           }).filter(b => b.visible));
         })()
       `
@@ -103,11 +164,17 @@ const mode = (process.argv[4] || 'image').toLowerCase(); // 'image' hoặc 'vide
 
     const downloadedFiles = [];
 
+    // ─────────────────────────────────────────────────────────────────
+    // CÁCH 1: Click nút download + chờ file xuất hiện
+    // ─────────────────────────────────────────────────────────────────
     if (downloadBtns.length > 0) {
-      // Click từng nút download và đợi file xuất hiện
       for (let i = 0; i < downloadBtns.length; i++) {
+        const btn = downloadBtns[i];
+
+        // Hover lại vào đúng nút trước khi click (đảm bảo không ẩn)
+        await hoverAt(Input, btn.x, btn.y);
         console.log(`  → Click download ${i + 1}/${downloadBtns.length}...`);
-        await clickAt(Input, downloadBtns[i].x, downloadBtns[i].y);
+        await clickAt(Input, btn.x, btn.y);
 
         // Chờ file mới xuất hiện (tối đa 60 giây)
         const newFile = await waitForNewFile(outputFolder, existingFiles, 60000);
@@ -117,14 +184,13 @@ const mode = (process.argv[4] || 'image').toLowerCase(); // 'image' hoặc 'vide
           const newName = `${prefix}_${String(i + 1).padStart(2, '0')}${ext}`;
           const oldPath = path.join(outputFolder, newFile);
           const newPath = path.join(outputFolder, newName);
-
           try {
             fs.renameSync(oldPath, newPath);
             downloadedFiles.push(newPath);
             existingFiles.add(newName);
             console.log(`  ✓ Đã lưu: ${newName}`);
           } catch (renameErr) {
-            // Nếu rename lỗi, giữ tên cũ
+            // Rename thất bại → dùng tên gốc
             downloadedFiles.push(oldPath);
             existingFiles.add(newFile);
             console.log(`  ✓ Đã lưu (tên gốc): ${newFile}`);
@@ -133,13 +199,18 @@ const mode = (process.argv[4] || 'image').toLowerCase(); // 'image' hoặc 'vide
           console.log(`  ⚠️ Timeout chờ file download ${i + 1} (60 giây).`);
         }
 
-        await sleep(1000);
+        // Di chuột ra giữa màn hình để tránh hover đè lên nút tiếp theo
+        await hoverAt(Input, 300, 300);
+        await sleep(500);
       }
-    } else {
-      // ─────────────────────────────────────────────────────────────────
-      // CÁCH 2 (FALLBACK): Trích xuất ảnh/video dưới dạng base64 từ DOM
-      // ─────────────────────────────────────────────────────────────────
-      console.log(`  → Không tìm thấy nút download. Dùng phương thức trích xuất base64...`);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // CÁCH 2 (FALLBACK): Trích xuất ảnh/video dưới dạng base64 từ DOM
+    // Dùng khi không tìm thấy nút download hoặc download bị thất bại
+    // ─────────────────────────────────────────────────────────────────
+    if (downloadedFiles.length === 0) {
+      console.log(`  → Fallback: trích xuất base64 từ DOM...`);
 
       const mediaSelector = mode === 'video' ? 'video' : 'img';
       const { result: mediaResult } = await Runtime.evaluate({
@@ -176,11 +247,8 @@ const mode = (process.argv[4] || 'image').toLowerCase(); // 'image' hoặc 'vide
 
       const mediaItems = JSON.parse(mediaResult.value || '[]');
       const mimeToExt = {
-        'image/jpeg': '.jpg',
-        'image/png': '.png',
-        'image/webp': '.webp',
-        'video/mp4': '.mp4',
-        'video/webm': '.webm'
+        'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
+        'video/mp4': '.mp4', 'video/webm': '.webm'
       };
 
       for (let i = 0; i < mediaItems.length; i++) {
@@ -189,11 +257,9 @@ const mode = (process.argv[4] || 'image').toLowerCase(); // 'image' hoặc 'vide
           console.log(`  ⚠️ Bỏ qua item ${i + 1}: ${item.error || 'không có data'}`);
           continue;
         }
-
         const ext = mimeToExt[item.mimeType] || (mode === 'video' ? '.mp4' : '.jpg');
         const filename = `${prefix}_${String(i + 1).padStart(2, '0')}${ext}`;
         const filePath = path.join(outputFolder, filename);
-
         const base64Data = item.base64.split(',')[1];
         fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
         downloadedFiles.push(filePath);
