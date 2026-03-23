@@ -6,7 +6,7 @@
  *   2. Với mỗi ảnh:
  *      [PHASE 1] Setup ảnh x4 → Upload → Lấy prompt ảnh → Submit → Chờ → Tải 4 ảnh về
  *      [PHASE 2] Với mỗi ảnh đã gen:
- *                Setup video x1 → Upload → Lấy prompt video → Submit → Chờ → Tải video về
+ *                Setup video x4 → Click "Bắt đầu" → Chọn ảnh gen → Lấy prompt video → Submit → Chờ → Tải video về
  *      [PHASE 3] Chuyển ảnh gốc từ Tasks → Done
  *   3. Ghi log từng bước vào G:\My Drive\Logs\workflow-YYYY-MM-DD.log
  *
@@ -211,13 +211,13 @@ function processImage(imageFile, logFile) {
     }
     log(logFile, `    ✓ Prompt video: "${vidPromptData.promptText.substring(0, 80)}..."`);
 
-    // Bước 2: Setup mode video x1
-    log(logFile, `    Bước 2/5 → Setup mode video x1...`);
-    runScript(logFile, `node "${S}\\actionMode\\setup-bot-action-mode.js" video x1`);
+    // Bước 2: Setup mode video x4
+    log(logFile, `    Bước 2/5 → Setup mode video x4...`);
+    runScript(logFile, `node "${S}\\actionMode\\setup-bot-action-mode.js" video x4`);
 
-    // Bước 3: Upload ảnh đã generate
-    log(logFile, `    Bước 3/5 → Upload ảnh đã gen...`);
-    runScript(logFile, `node "${S}\\actionMode\\upload-image.js" "${genImg}"`);
+    // Bước 3: Click "Bắt đầu" → Popup → Chọn ảnh gen làm Start Frame
+    log(logFile, `    Bước 3/5 → Chọn ảnh làm Start Frame...`);
+    runScript(logFile, `node "${S}\\actionMode\\select-start-frame.js" "${genImg}"`);
 
     // Bước 4: Nhập prompt video và submit
     log(logFile, `    Bước 4/5 → Nhập prompt video và gửi...`);
