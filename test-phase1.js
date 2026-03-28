@@ -146,13 +146,26 @@ async function setupImageMode(Runtime, Input) {
 // ═══════════════════════════════════════════════════════════════
 // BƯỚC 3: UPLOAD ẢNH GỐC
 // Flow: add_2 → dialog library → click upload icon → file picker
-//       → set file → chờ item mới trong list → click item → dialog đóng
+//       → set file → chờ FLOW_UPLOAD network signal → click item → dialog đóng
 // ═══════════════════════════════════════════════════════════════
-async function uploadImage(Runtime, Input, Page, DOM, imagePath) {
+async function uploadImage(Runtime, Input, Page, DOM, Network, imagePath) {
   const filename = path.basename(imagePath);
   log(`[3/6] Upload ảnh: ${filename}`);
 
-  // ── 1. Click add_2 để mở dialog thư viện ──
+  // ── 1. Cài network listener TRƯỚC — chờ signal FLOW_UPLOAD ──
+  let uploadSignal = false;
+  Network.requestWillBeSent(({ request }) => {
+    if (!request.url.includes('batchLogFrontendEvents')) return;
+    try {
+      const body = JSON.parse(request.postData || '{}');
+      if (body.events?.some(e => e.eventType === 'FLOW_UPLOAD')) {
+        uploadSignal = true;
+        log(`  ✓ FLOW_UPLOAD signal nhận được`);
+      }
+    } catch {}
+  });
+
+  // ── 2. Click add_2 để mở dialog thư viện ──
   const addBtnPos = await waitForExpr(Runtime, `
     (() => {
       const btn = Array.from(document.querySelectorAll('button'))
@@ -165,20 +178,7 @@ async function uploadImage(Runtime, Input, Page, DOM, imagePath) {
   if (!addBtnPos) throw new Error('Không tìm thấy nút add_2!');
 
   await clickAt(Input, addBtnPos.x, addBtnPos.y);
-  await sleep(1500); // chờ dialog library hiện
-
-  // ── 2. Đếm số item hiện có trong list (để biết item mới sau upload) ──
-  const { result: countRes } = await Runtime.evaluate({
-    expression: `
-      (() => {
-        const dialog = document.querySelector('[role="dialog"]');
-        if (!dialog) return '0';
-        return String(dialog.querySelectorAll('[class*="sc-3038c00b-11"]').length);
-      })()
-    `
-  });
-  const itemsBefore = parseInt(countRes.value || '0', 10);
-  log(`  → ${itemsBefore} ảnh trong thư viện`);
+  await sleep(1500);
 
   // ── 3. Intercept file chooser ──
   await Page.setInterceptFileChooserDialog({ enabled: true });
@@ -188,7 +188,7 @@ async function uploadImage(Runtime, Input, Page, DOM, imagePath) {
     try {
       await DOM.setFileInputFiles({ files: [imagePath], backendNodeId });
       fileChosen = true;
-      log(`  ✓ File đã được chọn`);
+      log(`  ✓ File đã được set vào input`);
     } catch (e) {
       log(`  ⚠️ setFileInputFiles error: ${e.message}`);
     }
@@ -215,7 +215,7 @@ async function uploadImage(Runtime, Input, Page, DOM, imagePath) {
 
   await clickAt(Input, uploadBtnPos.x, uploadBtnPos.y);
 
-  // Chờ file chooser được xử lý (tối đa 8s)
+  // Chờ file chooser set xong (tối đa 8s)
   for (let i = 0; i < 16 && !fileChosen; i++) await sleep(500);
   await Page.setInterceptFileChooserDialog({ enabled: false });
 
@@ -224,53 +224,62 @@ async function uploadImage(Runtime, Input, Page, DOM, imagePath) {
     throw new Error('Timeout: file chooser không mở hoặc không set được file!');
   }
 
-  // ── 5. Chờ file upload lên server và hiện trong list ──
-  log(`  → Chờ upload lên server...`);
+  // ── 5. Chờ FLOW_UPLOAD signal (upload lên server xong) — tối đa 30s ──
+  log(`  → Chờ upload lên server (FLOW_UPLOAD signal)...`);
+  for (let i = 0; i < 30 && !uploadSignal; i++) await sleep(1000);
+
+  if (!uploadSignal) {
+    log(`  ⚠️ Không nhận FLOW_UPLOAD signal sau 30s, thử tiếp...`);
+  }
+  await sleep(1000); // buffer nhỏ để UI render item vào list
+
+  // ── 6. Click item vừa upload (đầu list = mới nhất) để SELECT ──
+  log(`  → Tìm và click ảnh vừa upload trong danh sách...`);
   const filenameNoExt = filename.replace(/\.[^.]+$/, '').toLowerCase();
 
   const newItemPos = await waitForExpr(Runtime, `
     (() => {
       const dialog = document.querySelector('[role="dialog"]');
       if (!dialog) return null;
-      const items = Array.from(dialog.querySelectorAll('[class*="sc-3038c00b-11"]'));
-      // Tìm item có alt chứa tên file (không phân biệt đuôi)
-      const nameHint = "${filenameNoExt}";
-      let item = items.find(el => {
-        const img = el.querySelector('img');
-        return img && img.alt && img.alt.toLowerCase().includes(nameHint);
-      });
-      // Fallback: item đầu tiên (mới nhất)
-      if (!item && items.length > ${itemsBefore}) item = items[0];
-      if (!item) return null;
-      const r = item.getBoundingClientRect();
+      const items = Array.from(dialog.querySelectorAll('img[alt]'))
+        .filter(img => img.getBoundingClientRect().width > 0);
+      // Ưu tiên item khớp tên file
+      const hint = "${filenameNoExt}";
+      let img = items.find(i => i.alt.toLowerCase().includes(hint));
+      // Fallback: ảnh đầu tiên trong list (mới nhất)
+      if (!img && items.length > 0) img = items[0];
+      if (!img) return null;
+      // Click vào row chứa img (parent có thể click được)
+      let el = img;
+      for (let k = 0; k < 5; k++) {
+        if (!el.parentElement) break;
+        el = el.parentElement;
+        const r = el.getBoundingClientRect();
+        if (r.width > 30 && r.height > 30) {
+          return JSON.stringify({x: r.left + r.width/2, y: r.top + r.height/2});
+        }
+      }
+      const r = img.getBoundingClientRect();
       return JSON.stringify({x: r.left + r.width/2, y: r.top + r.height/2});
     })()
-  `, 20, 1000); // Tối đa 20s chờ server
+  `, 10, 500);
 
   if (!newItemPos) {
     await clickAt(Input, 10, 10);
-    throw new Error('Timeout: ảnh không xuất hiện trong thư viện sau khi upload!');
+    throw new Error('Không tìm thấy item ảnh trong dialog để click!');
   }
 
-  // ── 6. Click item trong list để SELECT → dialog tự đóng ──
-  log(`  → Click chọn ảnh vừa upload...`);
   await clickAt(Input, newItemPos.x, newItemPos.y);
-  await sleep(1500); // chờ dialog đóng và card ảnh gắn vào input
+  await sleep(1500); // chờ dialog đóng, card gắn vào input
 
-  // ── 7. Verify card ảnh đã gắn vào input area ──
+  // ── 7. Verify card ảnh đã gắn ──
   const { result: verifyRes } = await Runtime.evaluate({
-    expression: `
-      (() => {
-        // Tìm card ảnh trong input area (nút có ảnh gắn kèm)
-        const card = document.querySelector('button[data-card-open]');
-        return card ? 'ok' : 'missing';
-      })()
-    `
+    expression: `document.querySelector('button[data-card-open]') ? 'ok' : 'missing'`
   });
   if (verifyRes.value === 'ok') {
-    log(`  ✓ Ảnh đã gắn vào input (card hiển thị)`);
+    log(`  ✓ Ảnh đã gắn vào input`);
   } else {
-    log(`  ⚠️ Không thấy card ảnh — có thể đã ok nhưng UI chưa render`);
+    log(`  ⚠️ Chưa thấy card — tiếp tục (có thể UI chưa render kịp)`);
   }
 }
 
@@ -608,16 +617,17 @@ async function downloadImages(Runtime, Input, Page, outputFolder, prefix) {
     if (!flowTab) throw new Error('Không tìm thấy tab labs.google! Hãy mở Chrome với --remote-debugging-port=9222');
 
     client = await CDP({target: flowTab.id, port: 9222});
-    const { Runtime, Input, Page, DOM } = client;
+    const { Runtime, Input, Page, DOM, Network } = client;
     await Runtime.enable();
     await Page.enable();
     await DOM.enable();
+    await Network.enable();
 
     // 2. Setup mode ảnh x4
     await setupImageMode(Runtime, Input);
 
     // 3. Upload ảnh gốc
-    await uploadImage(Runtime, Input, Page, DOM, absImagePath);
+    await uploadImage(Runtime, Input, Page, DOM, Network, absImagePath);
 
     // 4. Nhập prompt & submit
     await inputPromptAndSubmit(Runtime, Input, promptText);
