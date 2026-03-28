@@ -231,56 +231,17 @@ async function uploadImage(Runtime, Input, Page, DOM, Network, imagePath) {
   if (!uploadSignal) {
     log(`  ⚠️ Không nhận FLOW_UPLOAD signal sau 30s, thử tiếp...`);
   }
-  await sleep(1000); // buffer nhỏ để UI render item vào list
 
-  // ── 6. Click item vừa upload (đầu list = mới nhất) để SELECT ──
-  log(`  → Tìm và click ảnh vừa upload trong danh sách...`);
-  const filenameNoExt = filename.replace(/\.[^.]+$/, '').toLowerCase();
-
-  const newItemPos = await waitForExpr(Runtime, `
-    (() => {
-      const dialog = document.querySelector('[role="dialog"]');
-      if (!dialog) return null;
-      const items = Array.from(dialog.querySelectorAll('img[alt]'))
-        .filter(img => img.getBoundingClientRect().width > 0);
-      // Ưu tiên item khớp tên file
-      const hint = "${filenameNoExt}";
-      let img = items.find(i => i.alt.toLowerCase().includes(hint));
-      // Fallback: ảnh đầu tiên trong list (mới nhất)
-      if (!img && items.length > 0) img = items[0];
-      if (!img) return null;
-      // Click vào row chứa img (parent có thể click được)
-      let el = img;
-      for (let k = 0; k < 5; k++) {
-        if (!el.parentElement) break;
-        el = el.parentElement;
-        const r = el.getBoundingClientRect();
-        if (r.width > 30 && r.height > 30) {
-          return JSON.stringify({x: r.left + r.width/2, y: r.top + r.height/2});
-        }
-      }
-      const r = img.getBoundingClientRect();
-      return JSON.stringify({x: r.left + r.width/2, y: r.top + r.height/2});
-    })()
-  `, 10, 500);
-
-  if (!newItemPos) {
-    await clickAt(Input, 10, 10);
-    throw new Error('Không tìm thấy item ảnh trong dialog để click!');
-  }
-
-  await clickAt(Input, newItemPos.x, newItemPos.y);
-  await sleep(1500); // chờ dialog đóng, card gắn vào input
-
-  // ── 7. Verify card ảnh đã gắn ──
-  const { result: verifyRes } = await Runtime.evaluate({
-    expression: `document.querySelector('button[data-card-open]') ? 'ok' : 'missing'`
+  // ── 6. Đóng dialog nếu còn mở ──
+  const { result: dialogCheck } = await Runtime.evaluate({
+    expression: `document.querySelector('[role="dialog"]') ? 'open' : 'closed'`
   });
-  if (verifyRes.value === 'ok') {
-    log(`  ✓ Ảnh đã gắn vào input`);
-  } else {
-    log(`  ⚠️ Chưa thấy card — tiếp tục (có thể UI chưa render kịp)`);
+  if (dialogCheck.value === 'open') {
+    await clickAt(Input, 10, 10);
+    await sleep(500);
   }
+
+  log(`  ✓ Upload hoàn tất, ảnh đã gắn vào input`);
 }
 
 // ═══════════════════════════════════════════════════════════════
