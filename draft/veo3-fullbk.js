@@ -539,6 +539,7 @@ async function waitForImages(Runtime, Network) {
   const p2End = Date.now() + maxWaitSec * 1000;
   let attempt = 0;
   let actualCount = 0;
+  let submitOKAt = null;
   while (Date.now() < p2End) {
     attempt++;
     await sleep(3000);
@@ -553,8 +554,16 @@ async function waitForImages(Runtime, Network) {
         log(`  ✓ Generation xong! images=${d.imageCount}, patchUUIDs=${patchUUIDs.length}`);
         break;
       }
-      // Submit OK nhưng chưa đủ 4 — tiếp tục chờ PATCH đến hết maxWaitSec
+      // Submit OK nhưng chưa đủ 4 — KHÔNG break, tiếp tục loop chờ PATCH
+      // PATCH listener vẫn đang chạy nền, chỉ cần không thoát vòng while
       log(`  ⚠️ Submit OK nhưng chỉ ${d.imageCount} ảnh / ${patchUUIDs.length} PATCH — tiếp tục chờ PATCH...`);
+      // Nếu đã chờ quá 60s sau submit OK mà vẫn không đủ → dùng số có được
+      if (!submitOKAt) submitOKAt = Date.now();
+      if (Date.now() - submitOKAt >= 60000) {
+        actualCount = Math.min(Math.max(d.imageCount, patchUUIDs.length), 4);
+        log(`  ⚠️ Chờ 60s sau submit OK vẫn chỉ ${actualCount} ảnh — tiếp tục với ${actualCount}`);
+        break;
+      }
     }
 
     // Timeout hết mà chưa đủ → dùng số có được
@@ -648,43 +657,22 @@ async function waitForImages(Runtime, Network) {
 
 // ═══════════════════════════════════════════════════════════════
 // SNAPSHOT VIDEO UUIDs HIỆN CÓ (gọi TRƯỚC submit)
-// Chờ DOM ổn định: poll 2 lần liên tiếp thấy cùng số UUID mới dừng
-// Tránh bắt thiếu UUID khi phase trước vẫn đang render muộn
 // ═══════════════════════════════════════════════════════════════
 async function snapshotVideoUUIDs(Runtime) {
-  const getUUIDs = async () => {
-    const { result } = await Runtime.evaluate({
-      expression: `JSON.stringify(
-        (() => {
-          const seen = new Set();
-          for (const v of Array.from(document.querySelectorAll('video'))) {
-            const src = v.getAttribute('src') || v.src || '';
-            const m = src.match(/name=([^&]+)/);
-            if (m && m[1]) seen.add(m[1]);
-          }
-          return [...seen];
-        })()
-      )`
-    });
-    return JSON.parse(result.value || '[]');
-  };
-
-  // Poll tối đa 5 lần (5s), đến khi 2 poll liên tiếp cùng số UUID
-  let prev = -1;
-  let stable = 0;
-  let uuids = [];
-  for (let i = 0; i < 5; i++) {
-    uuids = await getUUIDs();
-    if (uuids.length === prev) {
-      stable++;
-      if (stable >= 1) break; // 2 lần liên tiếp cùng số → ổn định
-    } else {
-      stable = 0;
-      prev = uuids.length;
-    }
-    await sleep(1000);
-  }
-
+  const { result } = await Runtime.evaluate({
+    expression: `JSON.stringify(
+      (() => {
+        const seen = new Set();
+        for (const v of Array.from(document.querySelectorAll('video'))) {
+          const src = v.getAttribute('src') || v.src || '';
+          const m = src.match(/name=([^&]+)/);
+          if (m && m[1]) seen.add(m[1]);
+        }
+        return [...seen];
+      })()
+    )`
+  });
+  const uuids = JSON.parse(result.value || '[]');
   log(`  → Snapshot ${uuids.length} video UUIDs hiện có`);
   return new Set(uuids);
 }
@@ -1011,7 +999,6 @@ async function waitForVideos(Network, Runtime, existingVideoUUIDs = new Set()) {
     let settled = false;
     let lastCount = 0;
     let lastChangeAt = Date.now();
-    const retriedTileIds = new Map(); // tileId → timestamp retry gần nhất
 
     function done(reason, detail = '') {
       if (settled) return;
@@ -1074,61 +1061,6 @@ async function waitForVideos(Network, Runtime, existingVideoUUIDs = new Set()) {
           return;
         }
 
-        // ── Auto-retry tile lỗi (btn.click() trong browser, debounce 30s) ──
-        try {
-          const { result: errRes } = await Runtime.evaluate({
-            expression: `
-              (() => {
-                const tiles = [];
-                for (const el of document.querySelectorAll('[data-tile-id]')) {
-                  const tileId = el.getAttribute('data-tile-id');
-                  const hasError = Array.from(el.querySelectorAll('div')).some(
-                    d => d.children.length === 0 && d.textContent.trim() === 'Không thành công'
-                  );
-                  if (!hasError) continue;
-                  const btn = Array.from(el.querySelectorAll('button')).find(b => {
-                    const icon = b.querySelector('i');
-                    return icon && icon.textContent.trim() === 'refresh';
-                  });
-                  if (!btn) continue;
-                  btn.scrollIntoView({ block: 'center' });
-                  tiles.push({ tileId, btnIndex: Array.from(el.querySelectorAll('button')).indexOf(btn) });
-                }
-                return JSON.stringify(tiles);
-              })()
-            `
-          });
-          const errorTiles = JSON.parse(errRes.value || '[]');
-          const now = Date.now();
-          const toRetry = errorTiles.filter(t => {
-            const last = retriedTileIds.get(t.tileId);
-            return !last || now - last >= 30000;
-          });
-          if (toRetry.length > 0) {
-            log(`  ⚠️ Phát hiện ${toRetry.length} tile lỗi → tự động click Thử lại...`);
-            for (const t of toRetry) {
-              await Runtime.evaluate({
-                expression: `
-                  (() => {
-                    const el = document.querySelector('[data-tile-id="${t.tileId}"]');
-                    if (!el) return;
-                    const btn = Array.from(el.querySelectorAll('button')).find(b => {
-                      const icon = b.querySelector('i');
-                      return icon && icon.textContent.trim() === 'refresh';
-                    });
-                    if (btn) { btn.scrollIntoView({ block: 'center' }); btn.click(); }
-                  })()
-                `
-              });
-              retriedTileIds.set(t.tileId, Date.now());
-              log(`    ✓ Đã click Thử lại tile ${t.tileId.substring(6, 14)}`);
-              await sleep(500);
-            }
-            lastChangeAt = Date.now(); // reset stall timer
-          }
-        } catch (_) { /* ignore retry errors */ }
-        // ───────────────────────────────────────────────────────────────
-
         // Stall detection: có video mới nhưng không tăng thêm quá STALL_MS
         if (count > 0 && Date.now() - lastChangeAt >= STALL_MS) {
           log(`  ⚠️ Stall ${STALL_MS / 1000}s — chỉ ${count}/${EXPECTED} UUID. Tiến hành với ${count} video...`);
@@ -1144,7 +1076,7 @@ async function waitForVideos(Network, Runtime, existingVideoUUIDs = new Set()) {
 // ═══════════════════════════════════════════════════════════════
 // DOWNLOAD VIDEO — UUID-based (bỏ qua video cũ)
 // ═══════════════════════════════════════════════════════════════
-async function downloadVideos(Runtime, Input, Page, outputFolder, existingVideoUUIDs = new Set(), imageName = 'image', imgIndex = 1) {
+async function downloadVideos(Runtime, Input, Page, outputFolder, existingVideoUUIDs = new Set()) {
   log(`  → Download video → ${path.basename(outputFolder)}`);
 
   await Page.setDownloadBehavior({ behavior: 'allow', downloadPath: outputFolder });
@@ -1206,23 +1138,9 @@ async function downloadVideos(Runtime, Input, Page, outputFolder, existingVideoU
           }).map(b => {
             const style = window.getComputedStyle(b);
             const rect  = b.getBoundingClientRect();
-            // Tìm UUID từ video element gần nhất (leo lên DOM rồi tìm xuống)
-            let uuid = '';
-            let node = b.parentElement;
-            for (let k = 0; k < 8; k++) {
-              if (!node || node === document.body) break;
-              const vid = node.querySelector('video');
-              if (vid) {
-                const src = vid.getAttribute('src') || vid.src || '';
-                const m = src.match(/name=([^&]+)/);
-                if (m && m[1]) { uuid = m[1]; break; }
-              }
-              node = node.parentElement;
-            }
             return {
               x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
-              visible: rect.width > 0 && style.display !== 'none' && style.visibility !== 'hidden',
-              uuid
+              visible: rect.width > 0 && style.display !== 'none' && style.visibility !== 'hidden'
             };
           }).filter(b => b.visible)
         );
@@ -1255,8 +1173,7 @@ async function downloadVideos(Runtime, Input, Page, outputFolder, existingVideoU
 
       if (newFile) {
         const ext = path.extname(newFile);
-        const uuidSuffix = b.uuid ? `-${b.uuid.replace(/-/g, '').substring(0, 10)}` : '';
-        const newName = `img${imgIndex}-video-${i + 1}${uuidSuffix}${ext}`;
+        const newName = `video_${String(i + 1).padStart(2, '0')}${ext}`;
         const oldPath = path.join(outputFolder, newFile);
         let newPath = path.join(outputFolder, newName);
         try { fs.renameSync(oldPath, newPath); existingFiles.add(newName); }
@@ -1326,8 +1243,7 @@ async function downloadVideos(Runtime, Input, Page, outputFolder, existingVideoU
         return;
       }
       const ext = mimes[item.mime] || '.mp4';
-      const uuidSuffix = item.uuid ? `-${item.uuid.replace(/-/g, '').substring(0, 10)}` : '';
-      const name = `img${imgIndex}-video-${i + 1}${uuidSuffix}${ext}`;
+      const name = `video_${String(i + 1).padStart(2, '0')}${ext}`;
       const fp = path.join(outputFolder, name);
       fs.writeFileSync(fp, Buffer.from(item.b64.split(',')[1], 'base64'));
       downloaded.push(fp);
@@ -1473,7 +1389,7 @@ async function clearPrompt(Runtime, Input) {
 
         await waitForVideos(Network, Runtime, existingVideoUUIDs);
 
-        const vidFiles = await downloadVideos(Runtime, Input, Page, vidFolder, existingVideoUUIDs, imageBaseName, i + 1);
+        const vidFiles = await downloadVideos(Runtime, Input, Page, vidFolder, existingVideoUUIDs);
         allVideos.push(...vidFiles);
         log(`  ✓ ${vidFiles.length} video → ${path.basename(vidFolder)}`);
 
@@ -1496,7 +1412,7 @@ async function clearPrompt(Runtime, Input) {
 
         await waitForVideos(Network, Runtime, existingVideoUUIDs);
 
-        const vidFiles = await downloadVideos(Runtime, Input, Page, vidFolder, existingVideoUUIDs, imageBaseName, i + 1);
+        const vidFiles = await downloadVideos(Runtime, Input, Page, vidFolder, existingVideoUUIDs);
         allVideos.push(...vidFiles);
         log(`  ✓ ${vidFiles.length} video → ${path.basename(vidFolder)}`);
       }

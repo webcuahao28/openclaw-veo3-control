@@ -5,7 +5,7 @@
  *
  * Cú pháp:
  *   node test-phase2-only.js <output_dir> <product> [context] [image_count]
- *
+ *   node "C:\Users\ADMIN\openClawVeo3\test-phase2-main.js" "C:\Users\ADMIN\Desktop\Tasks\sunglasses\output" sunglasses sunglasses 4
  * Ví dụ:
  *   node test-phase2-only.js "./output" hat instore 4
  *   node test-phase2-only.js "./output" hat instore    (mặc định 4 ảnh)
