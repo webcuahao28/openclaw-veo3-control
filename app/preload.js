@@ -13,4 +13,5 @@ contextBridge.exposeInMainWorld('api', {
   pickFolder:      ()           => ipcRenderer.invoke('pick-folder'),
   pickImage:       ()           => ipcRenderer.invoke('pick-image'),
   openFolder:      (args)       => ipcRenderer.invoke('open-folder', args),
+  launchChrome:    ()           => ipcRenderer.invoke('launch-chrome'),
 });

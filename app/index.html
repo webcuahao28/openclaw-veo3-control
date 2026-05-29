@@ -2,208 +2,167 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OpenClaw Flow Bot</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
-<!-- ── Header ─────────────────────────────────────────────── -->
+<!-- ── Header ─────────────────────────────────────────── -->
 <div id="header">
-  <h1>⚡ OpenClaw Flow Bot <span>— labs.google/flow</span></h1>
+  <h1>⚡ OpenClaw Flow Bot</h1>
   <div id="conn-badge">
     <div id="conn-dot"></div>
-    <span id="conn-label">Đang kiểm tra...</span>
-    <button class="btn btn-ghost btn-icon" id="btn-refresh" title="Kiểm tra lại kết nối">↻</button>
+    <span id="conn-label">...</span>
+    <button class="btn-xs" id="btn-refresh">↻</button>
+    <button class="btn-xs" id="btn-launch-chrome" title="Mở Chrome với remote debugging">Chrome</button>
   </div>
 </div>
 
-<!-- ── Scroll area ────────────────────────────────────────── -->
-<div id="main">
+<!-- ── Body ───────────────────────────────────────────── -->
+<div id="body">
 
-  <!-- 1. Tạo dự án mới -->
-  <div class="card">
-    <div class="card-header open" data-target="card-project">
-      <div class="card-title"><span class="ico">📁</span> Tạo dự án mới</div>
-      <span class="card-chevron">▲</span>
-    </div>
-    <div class="card-body open" id="card-project">
-      <p style="font-size:11px;color:var(--text2)">Click "+ Dự án mới" trên trang Flow home và chờ project editor mở.</p>
-      <button class="btn btn-primary btn-run" id="btn-create-project">▶ Tạo dự án mới</button>
-    </div>
-  </div>
+  <!-- LEFT: config ───────────────────────────────────── -->
+  <div id="config-col">
 
-  <!-- 2. Mở tab mới / đóng tab cũ -->
-  <div class="card">
-    <div class="card-header" data-target="card-tab">
-      <div class="card-title"><span class="ico">🌐</span> Mở tab / đóng tab cũ</div>
-      <span class="card-chevron">▼</span>
-    </div>
-    <div class="card-body" id="card-tab">
-      <div class="form-row">
-        <label>URL đích (để trống = Flow home)</label>
-        <input type="text" id="tab-url" placeholder="https://labs.google/fx/vi/tools/flow" />
-      </div>
-      <button class="btn btn-primary btn-run" id="btn-open-tab">▶ Mở tab mới & đóng tab Flow cũ</button>
-    </div>
-  </div>
-
-  <!-- 3. Chọn cài đặt generation -->
-  <div class="card">
-    <div class="card-header" data-target="card-options">
-      <div class="card-title"><span class="ico">⚙️</span> Chọn mode & cài đặt</div>
-      <span class="card-chevron">▼</span>
-    </div>
-    <div class="card-body" id="card-options">
-
-      <div class="form-row">
-        <label>Mode</label>
+    <!-- Mode & tỉ lệ -->
+    <div class="cfg-group">
+      <div class="cfg-title open" data-t="g1">🖼 Mode & Tỉ lệ <span class="chev">▲</span></div>
+      <div class="cfg-body open" id="g1">
+        <div class="f-label">Mode</div>
         <div class="seg" id="seg-mode">
-          <button class="active" data-val="image">🖼 Hình ảnh</button>
-          <button data-val="video">🎬 Video</button>
+          <button class="on" data-v="image">Hình ảnh</button>
+          <button data-v="video">Video</button>
         </div>
-      </div>
-
-      <div class="form-row">
-        <label>Tỉ lệ khung hình</label>
+        <div class="f-label">Tỉ lệ khung hình</div>
         <div class="seg" id="seg-ratio">
-          <button data-val="16:9">16:9</button>
-          <button data-val="4:3">4:3</button>
-          <button class="active" data-val="1:1">1:1</button>
-          <button data-val="3:4">3:4</button>
-          <button data-val="9:16">9:16</button>
+          <button data-v="16:9">16:9</button>
+          <button data-v="4:3">4:3</button>
+          <button class="on" data-v="1:1">1:1</button>
+          <button data-v="3:4">3:4</button>
+          <button data-v="9:16">9:16</button>
         </div>
-      </div>
-
-      <div class="form-row">
-        <label>Số lượng</label>
+        <div class="f-label">Số lượng</div>
         <div class="seg" id="seg-qty">
-          <button data-val="1">1x</button>
-          <button class="active" data-val="2">x2</button>
-          <button data-val="3">x3</button>
-          <button data-val="4">x4</button>
+          <button data-v="1">1x</button>
+          <button class="on" data-v="2">x2</button>
+          <button data-v="3">x3</button>
+          <button data-v="4">x4</button>
         </div>
-      </div>
-
-      <div class="form-row">
-        <label>Model (để trống = không đổi)</label>
+        <div class="f-label">Model (để trống = không đổi)</div>
         <input type="text" id="opt-model" placeholder="Nano Banana Pro" />
       </div>
+    </div>
 
-      <button class="btn btn-primary btn-run" id="btn-select-options">▶ Áp dụng cài đặt</button>
-    </div>
-  </div>
-
-  <!-- 4. Sort assets -->
-  <div class="card">
-    <div class="card-header" data-target="card-sort">
-      <div class="card-title"><span class="ico">🔃</span> Sắp xếp tài sản</div>
-      <span class="card-chevron">▼</span>
-    </div>
-    <div class="card-body" id="card-sort">
-      <div class="form-row">
-        <label>Sắp xếp theo</label>
-        <div class="seg" id="seg-sort">
-          <button class="active" data-val="recent">Gần đây</button>
-          <button data-val="oldest">Cũ nhất</button>
-          <button data-val="name">Tên</button>
-        </div>
-      </div>
-      <button class="btn btn-primary btn-run" id="btn-sort">▶ Sắp xếp</button>
-    </div>
-  </div>
-
-  <!-- 5. Click tài sản -->
-  <div class="card">
-    <div class="card-header" data-target="card-click">
-      <div class="card-title"><span class="ico">🖱️</span> Chọn tài sản</div>
-      <span class="card-chevron">▼</span>
-    </div>
-    <div class="card-body" id="card-click">
-      <div class="form-row">
-        <label>Vị trí (0 = đầu tiên)</label>
-        <input type="number" id="click-index" value="0" min="0" max="99" style="width:80px" />
-      </div>
-      <button class="btn btn-primary btn-run" id="btn-click-asset">▶ Click tài sản</button>
-    </div>
-  </div>
-
-  <!-- 6. Nhập prompt & submit -->
-  <div class="card">
-    <div class="card-header" data-target="card-prompt">
-      <div class="card-title"><span class="ico">✍️</span> Nhập prompt & tạo</div>
-      <span class="card-chevron">▼</span>
-    </div>
-    <div class="card-body" id="card-prompt">
-      <div class="form-row">
-        <label>Prompt</label>
+    <!-- Prompt -->
+    <div class="cfg-group">
+      <div class="cfg-title open" data-t="g2">✍️ Prompt <span class="chev">▲</span></div>
+      <div class="cfg-body open" id="g2">
         <textarea id="prompt-text" placeholder="Mô tả hình ảnh / video bạn muốn tạo..."></textarea>
-      </div>
-      <div class="form-row">
-        <label>Tỉ lệ paste (%) — phần giữa dùng clipboard để nhập nhanh</label>
+        <div class="f-label">Tỉ lệ paste (%)</div>
         <div class="seg" id="seg-paste">
-          <button data-val="0">0%</button>
-          <button data-val="50">50%</button>
-          <button class="active" data-val="60">60%</button>
-          <button data-val="80">80%</button>
+          <button data-v="0">0%</button>
+          <button data-v="50">50%</button>
+          <button class="on" data-v="60">60%</button>
+          <button data-v="80">80%</button>
         </div>
       </div>
-      <button class="btn btn-primary btn-run" id="btn-prompt">▶ Nhập & Submit</button>
     </div>
-  </div>
 
-  <!-- 7a. Upload ảnh tham chiếu -->
-  <div class="card">
-    <div class="card-header" data-target="card-upload">
-      <div class="card-title"><span class="ico">📤</span> Upload ảnh tham chiếu</div>
-      <span class="card-chevron">▼</span>
-    </div>
-    <div class="card-body" id="card-upload">
-      <div class="form-row">
-        <label>Đường dẫn ảnh</label>
+    <!-- Upload ảnh -->
+    <div class="cfg-group">
+      <div class="cfg-title" data-t="g3">📤 Upload ảnh (tùy chọn) <span class="chev">▼</span></div>
+      <div class="cfg-body" id="g3">
+        <div class="f-label">Để trống = bỏ qua bước upload</div>
         <div class="file-row">
-          <input type="text" id="upload-path" placeholder="C:\Users\...\photo.jpg" />
-          <button class="btn btn-ghost btn-icon" id="btn-pick-image">📂</button>
+          <input type="text" id="upload-path" placeholder="C:\...\photo.jpg" />
+          <button class="btn-pick" id="btn-pick-image">📂</button>
         </div>
       </div>
-      <button class="btn btn-primary btn-run" id="btn-upload">▶ Upload ảnh</button>
     </div>
-  </div>
 
-  <!-- 7b. Lưu ảnh kết quả -->
-  <div class="card">
-    <div class="card-header" data-target="card-save">
-      <div class="card-title"><span class="ico">💾</span> Lưu ảnh kết quả</div>
-      <span class="card-chevron">▼</span>
-    </div>
-    <div class="card-body" id="card-save">
-      <div class="form-row">
-        <label>Thư mục lưu</label>
+    <!-- Lưu ảnh -->
+    <div class="cfg-group">
+      <div class="cfg-title open" data-t="g4">💾 Lưu kết quả <span class="chev">▲</span></div>
+      <div class="cfg-body open" id="g4">
+        <div class="f-label">Thư mục lưu</div>
         <div class="file-row">
-          <input type="text" id="save-folder" placeholder="C:\Users\...\output" />
-          <button class="btn btn-ghost btn-icon" id="btn-pick-folder">📂</button>
+          <input type="text" id="save-folder" placeholder="C:\output" />
+          <button class="btn-pick" id="btn-pick-folder">📂</button>
         </div>
-      </div>
-      <div class="form-row">
-        <label>Tiền tố tên file (tùy chọn)</label>
+        <div class="f-label">Tiền tố tên file</div>
         <input type="text" id="save-prefix" placeholder="hat_outdoor" />
       </div>
-      <button class="btn btn-primary btn-run" id="btn-save">▶ Lưu ảnh</button>
-      <button class="btn btn-ghost btn-run" id="btn-open-folder" style="display:none">📂 Mở thư mục</button>
     </div>
-  </div>
 
-  <!-- padding cho log bar -->
-  <div style="height:20px"></div>
-</div>
+    <!-- Workflow options -->
+    <div class="cfg-group">
+      <div class="cfg-title open" data-t="g5">⚙️ Tùy chọn workflow <span class="chev">▲</span></div>
+      <div class="cfg-body open" id="g5">
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="chk-create" /> Tạo dự án mới
+        </label>
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="chk-sort" /> Sắp xếp tài sản sau
+        </label>
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="chk-save" checked /> Lưu ảnh kết quả
+        </label>
+        <div class="f-label">Chờ generation (giây)</div>
+        <input type="number" id="wait-gen" value="15" min="5" max="120" style="width:80px" />
+      </div>
+    </div>
 
-<!-- ── Log bar ────────────────────────────────────────────── -->
-<div id="log-area">
-  <div class="log-bar">
-    <div class="spinner hidden" id="spinner"></div>
-    <div id="log-text">Sẵn sàng.</div>
-  </div>
-</div>
+  </div><!-- /config-col -->
+
+  <!-- RIGHT: run ─────────────────────────────────────── -->
+  <div id="run-col">
+    <div id="run-title">Workflow tự động</div>
+
+    <!-- THE button -->
+    <button id="btn-run-all">▶ &nbsp;CHẠY TOÀN BỘ</button>
+
+    <!-- Steps progress -->
+    <div id="steps">
+      <div class="step-item" id="step-create">
+        <span class="step-icon">📁</span>
+        <span class="step-label">Tạo dự án mới</span>
+        <span class="step-status" id="st-create">chờ</span>
+      </div>
+      <div class="step-item" id="step-options">
+        <span class="step-icon">⚙️</span>
+        <span class="step-label">Chọn mode & cài đặt</span>
+        <span class="step-status" id="st-options">chờ</span>
+      </div>
+      <div class="step-item" id="step-upload">
+        <span class="step-icon">📤</span>
+        <span class="step-label">Upload ảnh tham chiếu</span>
+        <span class="step-status" id="st-upload">chờ</span>
+      </div>
+      <div class="step-item" id="step-prompt">
+        <span class="step-icon">✍️</span>
+        <span class="step-label">Nhập prompt & Submit</span>
+        <span class="step-status" id="st-prompt">chờ</span>
+      </div>
+      <div class="step-item" id="step-wait">
+        <span class="step-icon">⏳</span>
+        <span class="step-label">Chờ AI tạo ảnh</span>
+        <span class="step-status" id="st-wait">chờ</span>
+      </div>
+      <div class="step-item" id="step-save">
+        <span class="step-icon">💾</span>
+        <span class="step-label">Lưu ảnh kết quả</span>
+        <span class="step-status" id="st-save">chờ</span>
+      </div>
+    </div>
+
+    <!-- Log strip -->
+    <div id="log-strip">Sẵn sàng. Nhấn ▶ CHẠY TOÀN BỘ.</div>
+
+    <!-- Open output folder -->
+    <button id="btn-open-out">📂 Mở thư mục kết quả</button>
+
+  </div><!-- /run-col -->
+</div><!-- /body -->
 
 <script src="renderer.js"></script>
 </body>

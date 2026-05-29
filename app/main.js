@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
-const { execFile } = require('child_process');
+const fs   = require('fs');
+const { execFile, spawn } = require('child_process');
 const CDP = require('chrome-remote-interface');
 
 // When packaged, scripts live in resources/; when dev, they're one level up
@@ -120,4 +121,30 @@ ipcMain.handle('pick-image', async () => {
 
 ipcMain.handle('open-folder', async (_, { folderPath }) => {
   shell.openPath(folderPath);
+});
+
+// Launch Chrome with remote-debugging-port=9222 (Windows)
+ipcMain.handle('launch-chrome', async () => {
+  const chromePaths = [
+    process.env.CHROME_PATH,
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+  ].filter(Boolean);
+
+  const chromePath = chromePaths.find((p) => { try { return fs.existsSync(p); } catch { return false; } });
+  if (!chromePath) return { success: false, error: 'Không tìm thấy Chrome. Đặt CHROME_PATH.' };
+
+  try {
+    const child = spawn(chromePath, [
+      `--remote-debugging-port=${CDP_PORT}`,
+      '--remote-debugging-address=127.0.0.1',
+      '--no-first-run',
+      'https://labs.google/fx/vi/tools/flow',
+    ], { detached: true, stdio: 'ignore' });
+    child.unref();
+    return { success: true, pid: child.pid };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });
