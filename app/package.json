@@ -1,0 +1,33 @@
+{
+  "name": "openclaw-flow-bot",
+  "version": "1.0.0",
+  "description": "Windows app for automating Google Labs Flow image/video generation",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build-portable": "electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId": "com.openclaw.flowbot",
+    "productName": "OpenClaw Flow Bot",
+    "directories": { "output": "../dist" },
+    "win": {
+      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "icon": "icon.ico"
+    },
+    "extraResources": [
+      { "from": "../flowMode", "to": "flowMode" },
+      { "from": "../checkTasks", "to": "checkTasks" },
+      { "from": "../node_modules/chrome-remote-interface", "to": "node_modules/chrome-remote-interface" }
+    ],
+    "files": ["main.js", "preload.js", "index.html", "renderer.js", "styles.css"]
+  },
+  "dependencies": {
+    "chrome-remote-interface": "^0.34.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}
