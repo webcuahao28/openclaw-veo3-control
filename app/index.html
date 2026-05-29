@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>OpenClaw Flow Bot</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────── -->
+<div id="header">
+  <h1>⚡ OpenClaw Flow Bot</h1>
+  <div id="conn-badge">
+    <div id="conn-dot"></div>
+    <span id="conn-label">...</span>
+    <button class="btn-xs" id="btn-refresh">↻</button>
+    <button class="btn-xs" id="btn-launch-chrome" title="Mở Chrome với remote debugging">Chrome</button>
+  </div>
+</div>
+
+<!-- ── Body ───────────────────────────────────────────── -->
+<div id="body">
+
+  <!-- LEFT: config ───────────────────────────────────── -->
+  <div id="config-col">
+
+    <!-- Mode & tỉ lệ -->
+    <div class="cfg-group">
+      <div class="cfg-title open" data-t="g1">🖼 Mode & Tỉ lệ <span class="chev">▲</span></div>
+      <div class="cfg-body open" id="g1">
+        <div class="f-label">Mode</div>
+        <div class="seg" id="seg-mode">
+          <button class="on" data-v="image">Hình ảnh</button>
+          <button data-v="video">Video</button>
+        </div>
+        <div class="f-label">Tỉ lệ khung hình</div>
+        <div class="seg" id="seg-ratio">
+          <button data-v="16:9">16:9</button>
+          <button data-v="4:3">4:3</button>
+          <button class="on" data-v="1:1">1:1</button>
+          <button data-v="3:4">3:4</button>
+          <button data-v="9:16">9:16</button>
+        </div>
+        <div class="f-label">Số lượng</div>
+        <div class="seg" id="seg-qty">
+          <button data-v="1">1x</button>
+          <button class="on" data-v="2">x2</button>
+          <button data-v="3">x3</button>
+          <button data-v="4">x4</button>
+        </div>
+        <div class="f-label">Model (để trống = không đổi)</div>
+        <input type="text" id="opt-model" placeholder="Nano Banana Pro" />
+      </div>
+    </div>
+
+    <!-- Prompt -->
+    <div class="cfg-group">
+      <div class="cfg-title open" data-t="g2">✍️ Prompt <span class="chev">▲</span></div>
+      <div class="cfg-body open" id="g2">
+        <textarea id="prompt-text" placeholder="Mô tả hình ảnh / video bạn muốn tạo..."></textarea>
+        <div class="f-label">Tỉ lệ paste (%)</div>
+        <div class="seg" id="seg-paste">
+          <button data-v="0">0%</button>
+          <button data-v="50">50%</button>
+          <button class="on" data-v="60">60%</button>
+          <button data-v="80">80%</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload ảnh -->
+    <div class="cfg-group">
+      <div class="cfg-title" data-t="g3">📤 Upload ảnh (tùy chọn) <span class="chev">▼</span></div>
+      <div class="cfg-body" id="g3">
+        <div class="f-label">Để trống = bỏ qua bước upload</div>
+        <div class="file-row">
+          <input type="text" id="upload-path" placeholder="C:\...\photo.jpg" />
+          <button class="btn-pick" id="btn-pick-image">📂</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lưu ảnh -->
+    <div class="cfg-group">
+      <div class="cfg-title open" data-t="g4">💾 Lưu kết quả <span class="chev">▲</span></div>
+      <div class="cfg-body open" id="g4">
+        <div class="f-label">Thư mục lưu</div>
+        <div class="file-row">
+          <input type="text" id="save-folder" placeholder="C:\output" />
+          <button class="btn-pick" id="btn-pick-folder">📂</button>
+        </div>
+        <div class="f-label">Tiền tố tên file</div>
+        <input type="text" id="save-prefix" placeholder="hat_outdoor" />
+      </div>
+    </div>
+
+    <!-- Workflow options -->
+    <div class="cfg-group">
+      <div class="cfg-title open" data-t="g5">⚙️ Tùy chọn workflow <span class="chev">▲</span></div>
+      <div class="cfg-body open" id="g5">
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="chk-create" /> Tạo dự án mới
+        </label>
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="chk-sort" /> Sắp xếp tài sản sau
+        </label>
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="chk-save" checked /> Lưu ảnh kết quả
+        </label>
+        <div class="f-label">Chờ generation (giây)</div>
+        <input type="number" id="wait-gen" value="15" min="5" max="120" style="width:80px" />
+      </div>
+    </div>
+
+  </div><!-- /config-col -->
+
+  <!-- RIGHT: run ─────────────────────────────────────── -->
+  <div id="run-col">
+    <div id="run-title">Workflow tự động</div>
+
+    <!-- THE button -->
+    <button id="btn-run-all">▶ &nbsp;CHẠY TOÀN BỘ</button>
+
+    <!-- Steps progress -->
+    <div id="steps">
+      <div class="step-item" id="step-create">
+        <span class="step-icon">📁</span>
+        <span class="step-label">Tạo dự án mới</span>
+        <span class="step-status" id="st-create">chờ</span>
+      </div>
+      <div class="step-item" id="step-options">
+        <span class="step-icon">⚙️</span>
+        <span class="step-label">Chọn mode & cài đặt</span>
+        <span class="step-status" id="st-options">chờ</span>
+      </div>
+      <div class="step-item" id="step-upload">
+        <span class="step-icon">📤</span>
+        <span class="step-label">Upload ảnh tham chiếu</span>
+        <span class="step-status" id="st-upload">chờ</span>
+      </div>
+      <div class="step-item" id="step-prompt">
+        <span class="step-icon">✍️</span>
+        <span class="step-label">Nhập prompt & Submit</span>
+        <span class="step-status" id="st-prompt">chờ</span>
+      </div>
+      <div class="step-item" id="step-wait">
+        <span class="step-icon">⏳</span>
+        <span class="step-label">Chờ AI tạo ảnh</span>
+        <span class="step-status" id="st-wait">chờ</span>
+      </div>
+      <div class="step-item" id="step-save">
+        <span class="step-icon">💾</span>
+        <span class="step-label">Lưu ảnh kết quả</span>
+        <span class="step-status" id="st-save">chờ</span>
+      </div>
+    </div>
+
+    <!-- Log strip -->
+    <div id="log-strip">Sẵn sàng. Nhấn ▶ CHẠY TOÀN BỘ.</div>
+
+    <!-- Open output folder -->
+    <button id="btn-open-out">📂 Mở thư mục kết quả</button>
+
+  </div><!-- /run-col -->
+</div><!-- /body -->
+
+<script src="renderer.js"></script>
+</body>
+</html>

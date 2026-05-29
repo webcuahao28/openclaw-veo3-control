@@ -1,6 +1,6 @@
 // file: check-task.js
-// Điền cái link Webhook (Deploy mới) của bạn vào đây
-const WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzxYh83welrm_o-p5j5GNy5nAm0QsFHVMFvmgjN-PsfZjevLEWw0A9FLqS9WslHyh3j_Q/exec';
+// Điền cái link Webhook (Deploy mới) của bạn vào đây (có thể override bằng biến môi trường WEBHOOK_URL khi test local)
+const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://script.google.com/macros/s/AKfycbzxYh83welrm_o-p5j5GNy5nAm0QsFHVMFvmgjN-PsfZjevLEWw0A9FLqS9WslHyh3j_Q/exec';
 
 async function checkTask() {
   try {

@@ -1,0 +1,33 @@
+{
+  "name": "openclaw-veo3-control",
+  "version": "1.0.0",
+  "description": "OpenClaw skill that drives Google Labs (Imagen/Veo) image & video generation via Chrome DevTools Protocol, with prompts sourced from Google Sheets.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/dom-logic.test.js && node test/webhook.test.js",
+    "test:dom": "node test/dom-logic.test.js",
+    "test:webhook": "node test/webhook.test.js",
+    "test:e2e": "bash test/run-local-test.sh",
+    "start-app": "cd app && npx electron .",
+    "build-app": "cd app && npm install && npm run build-portable"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:34833/git/webcuahao28/openclaw-veo3-control"
+  },
+  "keywords": [
+    "google-labs",
+    "veo",
+    "imagen",
+    "chrome-devtools-protocol",
+    "automation"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chrome-remote-interface": "^0.34.0"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<title>Mock Google Labs (labs.google) — Test Harness</title>
+<style>
+  * { box-sizing: border-box; font-family: Arial, sans-serif; }
+  body { margin: 0; background: #f5f5f7; color: #202124; }
+  .topbar { display: flex; align-items: center; gap: 12px; padding: 16px 24px; }
+  .menu-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 18px; border: 1px solid #dadce0; border-radius: 24px;
+    background: #fff; cursor: pointer; font-size: 15px;
+  }
+  .menu-panel {
+    display: none; position: absolute; top: 64px; left: 24px;
+    background: #fff; border: 1px solid #dadce0; border-radius: 12px;
+    padding: 16px; box-shadow: 0 4px 18px rgba(0,0,0,.15); z-index: 10;
+  }
+  .menu-panel.open { display: block; }
+  .row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .row .label { width: 90px; font-size: 13px; color: #5f6368; align-self: center; }
+  button[role="tab"] {
+    padding: 8px 16px; border: 1px solid #dadce0; border-radius: 20px;
+    background: #fff; cursor: pointer; font-size: 14px;
+  }
+  button[role="tab"][aria-selected="true"] { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+  .composer {
+    margin: 80px auto 0; max-width: 720px; background: #fff;
+    border: 1px solid #dadce0; border-radius: 16px; padding: 16px;
+  }
+  .composer-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 50%; border: 1px solid #dadce0;
+    background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .slate {
+    min-height: 90px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 10px;
+    font-size: 16px; outline: none;
+  }
+  .slate-placeholder { color: #9aa0a6; pointer-events: none; }
+  .submit-btn {
+    margin-top: 12px; width: 48px; height: 48px; border-radius: 50%;
+    border: none; background: #1a73e8; color: #fff; cursor: pointer; font-size: 20px;
+  }
+  .submit-btn:disabled { background: #c5c9cd; cursor: not-allowed; }
+  i { font-style: normal; } /* icons are represented as plain text (matches script's icon.textContent checks) */
+  #log { position: fixed; bottom: 0; left: 0; right: 0; max-height: 30vh; overflow: auto;
+         background: #1e1e1e; color: #9cdcfe; font: 12px monospace; padding: 8px; }
+</style>
+</head>
+<body>
+  <!-- Global state the CDP test runner reads back to assert behaviour -->
+  <script>
+    window.__state = {
+      mode: 'image',           // current mode
+      quantity: 'x1',          // current quantity
+      menuOpen: false,
+      promptText: '',          // text entered in editor
+      submitClicked: 0,        // submit click count
+      uploadedFiles: [],       // file names injected via DOM.setFileInputFiles
+    };
+    function logEvent(msg){
+      const el = document.getElementById('log');
+      if(el){ el.textContent += msg + "\n"; el.scrollTop = el.scrollHeight; }
+      console.log('[mock]', msg);
+    }
+  </script>
+
+  <div class="topbar">
+    <!-- Mode/model menu button. Text must match /nano banana|video|veo/i (see check-mode.js) -->
+    <button class="menu-btn" id="menuBtn" aria-haspopup="menu" aria-expanded="false">
+      <i>auto_awesome</i><span id="menuLabel">Nano Banana</span><i>expand_more</i>
+    </button>
+  </div>
+
+  <!-- Menu panel revealed when menu button is clicked -->
+  <div class="menu-panel" id="menuPanel" role="menu">
+    <div class="row">
+      <span class="label">Chế độ</span>
+      <button role="tab" id="tabImage" aria-selected="true">Hình ảnh</button>
+      <button role="tab" id="tabVideo" aria-selected="false">Video</button>
+    </div>
+    <div class="row">
+      <span class="label">Số lượng</span>
+      <button role="tab" data-qty class="qty" aria-selected="true">x1</button>
+      <button role="tab" data-qty class="qty" aria-selected="false">x2</button>
+      <button role="tab" data-qty class="qty" aria-selected="false">x4</button>
+    </div>
+  </div>
+
+  <!-- Prompt composer -->
+  <div class="composer">
+    <div class="composer-tools">
+      <!-- Upload button: child <i> text === 'add_2' (see upload-image.js) -->
+      <button class="icon-btn" id="addBtn" type="button"><i>add_2</i></button>
+      <span style="color:#5f6368;font-size:13px">Thêm hình ảnh tham chiếu</span>
+    </div>
+
+    <!-- Slate editor mock: matches div[role=textbox][data-slate-editor][contenteditable] -->
+    <div class="slate" role="textbox" data-slate-editor="true" contenteditable="true" id="editor">
+      <span class="slate-placeholder" data-slate-placeholder="true" id="ph">Bạn muốn tạo gì?</span>
+    </div>
+
+    <!-- Submit button: child <i> text === 'arrow_forward' (see action-input-prompt.js) -->
+    <button class="submit-btn" id="submitBtn" type="button"><i>arrow_forward</i></button>
+  </div>
+
+  <!-- Hidden native file input — upload-image.js Strategy 1 injects into this -->
+  <input type="file" id="fileInput" accept="image/*" style="display:none" />
+
+  <div id="log"></div>
+
+  <script>
+    const menuBtn   = document.getElementById('menuBtn');
+    const menuPanel = document.getElementById('menuPanel');
+    const menuLabel = document.getElementById('menuLabel');
+    const tabImage  = document.getElementById('tabImage');
+    const tabVideo  = document.getElementById('tabVideo');
+    const qtyTabs   = Array.from(document.querySelectorAll('button[data-qty]'));
+    const editor    = document.getElementById('editor');
+    const ph        = document.getElementById('ph');
+    const submitBtn = document.getElementById('submitBtn');
+    const addBtn    = document.getElementById('addBtn');
+    const fileInput = document.getElementById('fileInput');
+
+    function openMenu(){ menuPanel.classList.add('open'); menuBtn.setAttribute('aria-expanded','true'); window.__state.menuOpen = true; logEvent('menu OPEN'); }
+    function closeMenu(){ menuPanel.classList.remove('open'); menuBtn.setAttribute('aria-expanded','false'); window.__state.menuOpen = false; logEvent('menu CLOSE'); }
+
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.__state.menuOpen ? closeMenu() : openMenu();
+    });
+
+    // Click anywhere outside the panel closes it (matches "click at 10,10 to close")
+    document.addEventListener('click', (e) => {
+      if (window.__state.menuOpen && !menuPanel.contains(e.target) && e.target !== menuBtn && !menuBtn.contains(e.target)) {
+        closeMenu();
+      }
+    });
+
+    function selectMode(mode){
+      window.__state.mode = mode;
+      tabImage.setAttribute('aria-selected', mode === 'image' ? 'true' : 'false');
+      tabVideo.setAttribute('aria-selected', mode === 'video' ? 'true' : 'false');
+      // Menu button label must reflect mode for check-mode.js
+      menuLabel.textContent = mode === 'video' ? 'Veo 3' : 'Nano Banana';
+      logEvent('mode -> ' + mode);
+    }
+    tabImage.addEventListener('click', (e) => { e.stopPropagation(); selectMode('image'); });
+    tabVideo.addEventListener('click', (e) => { e.stopPropagation(); selectMode('video'); });
+
+    qtyTabs.forEach(t => t.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.__state.quantity = t.textContent.trim().toLowerCase();
+      qtyTabs.forEach(x => x.setAttribute('aria-selected', x === t ? 'true' : 'false'));
+      logEvent('quantity -> ' + window.__state.quantity);
+    }));
+
+    // Editor: remove placeholder on focus/typing, keep __state.promptText in sync
+    function syncPrompt(){
+      // text content excluding the placeholder node
+      let txt = '';
+      editor.childNodes.forEach(n => {
+        if (n.nodeType === Node.TEXT_NODE) txt += n.textContent;
+        else if (n.nodeType === Node.ELEMENT_NODE && !n.hasAttribute('data-slate-placeholder')) txt += n.textContent;
+      });
+      window.__state.promptText = txt;
+    }
+    editor.addEventListener('focus', () => { if (ph && ph.parentNode) ph.remove(); });
+    editor.addEventListener('beforeinput', () => { if (ph && ph.parentNode) ph.remove(); });
+    editor.addEventListener('input', syncPrompt);
+    editor.addEventListener('keyup', syncPrompt);
+
+    submitBtn.addEventListener('click', () => {
+      syncPrompt();
+      window.__state.submitClicked++;
+      logEvent('SUBMIT clicked (#' + window.__state.submitClicked + ') prompt="' + window.__state.promptText + '"');
+    });
+
+    addBtn.addEventListener('click', () => { logEvent('add_2 clicked (open file picker)'); fileInput.click(); });
+    fileInput.addEventListener('change', () => {
+      const names = Array.from(fileInput.files || []).map(f => f.name);
+      window.__state.uploadedFiles = names;
+      logEvent('file input changed -> ' + JSON.stringify(names));
+    });
+
+    logEvent('mock labs ready (mode=image, qty=x1)');
+  </script>
+</body>
+</html>
