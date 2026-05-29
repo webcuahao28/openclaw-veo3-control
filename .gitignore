@@ -1,0 +1,4 @@
+node_modules/
+.local-chrome/
+*.log
+.DS_Store
